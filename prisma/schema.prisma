@@ -1,0 +1,139 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ContentCategory {
+  ANIME
+  MANGA
+  MOVIE
+  TV_SHOW
+  BOOK
+  WEBSITE
+  PODCAST
+  GAME
+  OTHER
+}
+
+enum TrackingStatus {
+  PLAN_TO_WATCH
+  WATCHING
+  COMPLETED
+  ON_HOLD
+  DROPPED
+}
+
+enum RatingScale {
+  ONE
+  TWO
+  THREE
+  FOUR
+  FIVE
+  SIX
+  SEVEN
+  EIGHT
+  NINE
+  TEN
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  image     String?
+  password  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trackingItems UserTracking[]
+  notes         TrackingNote[]
+
+  @@index([email])
+}
+
+model TrackingItem {
+  id          String          @id @default(cuid())
+  title       String
+  description String?
+  imageUrl    String?
+  externalUrl String?
+  category    ContentCategory
+
+  // Metadata
+  author        String?
+  year          Int?
+  genres        String[] // Array of genre tags
+  totalEpisodes Int?
+  totalChapters Int?
+  totalBooks    Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  userTrackings UserTracking[]
+  notes         TrackingNote[]
+
+  @@index([category])
+  @@index([title])
+}
+
+model UserTracking {
+  id         String         @id @default(cuid())
+  userId     String
+  itemId     String
+  status     TrackingStatus @default(PLAN_TO_WATCH)
+  rating     RatingScale?
+  progress   Int? // Current progress (episode/chapter/book number)
+  startDate  DateTime?
+  finishDate DateTime?
+  priority   Int? // 1-5 priority
+  isFavorite Boolean        @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item TrackingItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemId])
+  @@index([userId])
+  @@index([itemId])
+  @@index([status])
+}
+
+model TrackingNote {
+  id        String  @id @default(cuid())
+  userId    String
+  itemId    String?
+  content   String  @db.Text
+  isPrivate Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item TrackingItem? @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([itemId])
+}
+
+model ActivityLog {
+  id        String          @id @default(cuid())
+  userId    String
+  action    String // e.g., "added_to_list", "completed", "rated"
+  itemTitle String
+  category  ContentCategory
+  details   String?         @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
