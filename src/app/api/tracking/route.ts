@@ -21,7 +21,7 @@ async function forward(request: NextRequest) {
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     try {
       body = await request.text();
-    } catch (e) {
+    } catch {
       body = null;
     }
   }

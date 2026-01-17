@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { ContentCategory, TrackingStatus, RatingScale } from '@prisma/client';
+import { ContentCategory, TrackingStatus, RatingScale, Prisma } from '@prisma/client';
 
 // Run on Node.js runtime so Prisma Client is supported
 export const runtime = 'nodejs';
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
         }
 
-        const where: any = {
+        const where: Prisma.TrackingItemWhereInput = {
             userTrackings: {
                 some: { userId }
             }

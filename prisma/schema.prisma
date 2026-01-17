@@ -81,6 +81,7 @@ model TrackingItem {
 
   @@index([category])
   @@index([title])
+  @@unique([title, category], map: "title_category")
 }
 
 model UserTracking {

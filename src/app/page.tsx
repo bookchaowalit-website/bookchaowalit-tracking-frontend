@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Plus,
   Search,
@@ -52,6 +52,21 @@ interface TrackingItem {
   }
 }
 
+// Data passed from the Add Item form
+interface AddItemForm {
+  title: string
+  description?: string | null
+  category: ContentCategory
+  author?: string | null
+  year?: number | null
+  genres?: string[]
+  imageUrl?: string | null
+  externalUrl?: string | null
+  totalEpisodes?: number | null
+  totalChapters?: number | null
+  totalBooks?: number | null
+}
+
 const categoryIcons: Record<ContentCategory, React.ReactNode> = {
   ANIME: <PlayCircle className="w-4 h-4" />,
   MANGA: <BookOpen className="w-4 h-4" />,
@@ -80,7 +95,7 @@ const statusLabels: Record<TrackingStatus, string> = {
   DROPPED: 'Dropped'
 }
 
-const statusIcons: Record<TrackingStatus, React.ReactNode> = {
+const _statusIcons: Record<TrackingStatus, React.ReactNode> = {
   PLAN_TO_WATCH: <Clock className="w-4 h-4" />,
   WATCHING: <PlayCircle className="w-4 h-4" />,
   COMPLETED: <CheckCircle2 className="w-4 h-4" />,
@@ -154,7 +169,7 @@ export default function DashboardPage() {
     setFilteredItems(filtered)
   }
 
-  const handleAddItem = async (itemData: any) => {
+  const handleAddItem = async (itemData: AddItemForm) => {
     try {
       const response = await fetch('/api/tracking', {
         method: 'POST',
@@ -352,7 +367,7 @@ export default function DashboardPage() {
             >
               All Status
             </Button>
-            {Object.entries(TrackingStatus).map(([key, value]) => (
+            {Object.entries(TrackingStatus).map(([_key, value]) => (
               <Button
                 key={value}
                 variant={selectedStatus === value ? 'default' : 'outline'}
@@ -518,7 +533,7 @@ export default function DashboardPage() {
                       className="flex-1 h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       <option value="">Set Status</option>
-                      {Object.entries(TrackingStatus).map(([key, value]) => (
+                      {Object.entries(TrackingStatus).map(([_key, value]) => (
                         <option key={value} value={value}>
                           {statusLabels[value]}
                         </option>
@@ -530,7 +545,7 @@ export default function DashboardPage() {
                       className="w-24 h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       <option value="">Rate</option>
-                      {Object.entries(RatingScale).map(([key, value]) => (
+                      {Object.entries(RatingScale).map(([_key, value]) => (
                         <option key={value} value={value}>
                           {Object.keys(RatingScale).indexOf(value) + 1}/10
                         </option>
@@ -557,14 +572,14 @@ export default function DashboardPage() {
                 e.preventDefault()
                 const formData = new FormData(e.currentTarget)
                 handleAddItem({
-                  title: formData.get('title'),
-                  description: formData.get('description'),
-                  category: formData.get('category'),
-                  author: formData.get('author'),
+                  title: formData.get('title') as string,
+                  description: (formData.get('description') as string) || null,
+                  category: formData.get('category') as ContentCategory,
+                  author: (formData.get('author') as string) || null,
                   year: formData.get('year') ? parseInt(formData.get('year') as string) : null,
                   genres: formData.get('genres') ? (formData.get('genres') as string).split(',').map(g => g.trim()) : [],
-                  imageUrl: formData.get('imageUrl'),
-                  externalUrl: formData.get('externalUrl'),
+                  imageUrl: (formData.get('imageUrl') as string) || null,
+                  externalUrl: (formData.get('externalUrl') as string) || null,
                   totalEpisodes: formData.get('totalEpisodes') ? parseInt(formData.get('totalEpisodes') as string) : null,
                   totalChapters: formData.get('totalChapters') ? parseInt(formData.get('totalChapters') as string) : null,
                   totalBooks: formData.get('totalBooks') ? parseInt(formData.get('totalBooks') as string) : null,
@@ -579,7 +594,7 @@ export default function DashboardPage() {
                   <label className="text-sm font-medium">Category *</label>
                   <select name="category" required className="w-full h-10 mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm">
                     <option value="">Select Category</option>
-                    {Object.entries(ContentCategory).map(([key, value]) => (
+                    {Object.entries(ContentCategory).map(([_key, value]) => (
                       <option key={value} value={value}>
                         {value.replace('_', ' ')}
                       </option>

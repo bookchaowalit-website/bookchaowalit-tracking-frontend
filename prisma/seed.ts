@@ -267,10 +267,10 @@ async function main() {
     const randomProgress = trackingItem.totalEpisodes
       ? Math.floor(Math.random() * trackingItem.totalEpisodes) + 1
       : trackingItem.totalChapters
-      ? Math.floor(Math.random() * trackingItem.totalChapters) + 1
-      : trackingItem.totalBooks
-      ? Math.floor(Math.random() * trackingItem.totalBooks) + 1
-      : null
+        ? Math.floor(Math.random() * trackingItem.totalChapters) + 1
+        : trackingItem.totalBooks
+          ? Math.floor(Math.random() * trackingItem.totalBooks) + 1
+          : null
 
     await prisma.userTracking.upsert({
       where: {
@@ -284,7 +284,7 @@ async function main() {
         userId: user.id,
         itemId: trackingItem.id,
         status: randomStatus as any,
-        rating: randomRating ? `ONE_${'ONE,TWO,THREE,FOUR,FIVE,SIX,SEVEN,EIGHT,NINE,TEN'.split(',')[randomRating - 1]}` : null,
+        rating: randomRating ? (['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN'][randomRating - 1] as any) : null,
         progress: randomProgress,
         startDate: new Date('2024-01-01'),
         finishDate: randomStatus === 'COMPLETED' ? new Date() : null,
@@ -310,15 +310,15 @@ async function main() {
   // Create some tracking notes
   const notes = [
     {
-      itemId: trackingItems.find((i) => i.title === 'One Piece')?.id!,
+      itemId: (await prisma.trackingItem.findFirst({ where: { title: 'One Piece' } }))!.id,
       content: 'One of the best anime ever! The story just keeps getting better.',
     },
     {
-      itemId: trackingItems.find((i) => i.title === 'Breaking Bad')?.id!,
+      itemId: (await prisma.trackingItem.findFirst({ where: { title: 'Breaking Bad' } }))!.id,
       content: 'The character development in this show is incredible. Walter White\'s transformation is masterful.',
     },
     {
-      itemId: trackingItems.find((i) => i.title === 'Dune')?.id!,
+      itemId: (await prisma.trackingItem.findFirst({ where: { title: 'Dune' } }))!.id,
       content: 'Reading this before watching the movie. The world-building is phenomenal.',
     },
   ]
