@@ -314,7 +314,58 @@ This project is licensed under the MIT License.
 ## 📞 Support
 
 For support, email support@yourdomain.com or open an issue in the repository.
-.
+
+## Architecture note: the Edge/Node split
+
+`/api/tracking` runs on the Edge runtime and is the only public-facing
+tracking endpoint; it forwards every request to `/api/internal/tracking`
+(Node.js runtime) via a same-origin `fetch`, attaching a shared secret
+(`x-internal-secret`, checked against `INTERNAL_API_SECRET`). This exists
+because Prisma Client doesn't run on the Edge runtime, so the actual
+database logic has to live in a Node.js route while the public one can stay
+Edge. Direct requests to `/api/internal/tracking` without the secret
+correctly 401.
+
+## Notes from a recent audit pass
+
+- **A byte-for-byte duplicate of the internal tracking route existed at
+  `api/_internal/tracking/`, and it was completely dead code** — Next.js
+  App Router excludes any folder prefixed with `_` from routing entirely
+  (that's the documented "private folder" convention), so this route was
+  never reachable, not even from `/api/tracking`'s own same-origin
+  `fetch`, which still pointed at the non-underscored `internal` path.
+  Confirmed by an actual `next build`: the route table only ever listed
+  `/api/internal/tracking`. Removed the dead duplicate.
+- **`/api/mcp` referenced an undefined `requestId` variable on every
+  single response path** — a real `ReferenceError` on every call, caught
+  silently by the route's own outer `try/catch` and returned as a
+  misleading `"Parse error"` instead of the real result. Masked from
+  `tsc`/`next build` by `typescript: { ignoreBuildErrors: true }` in
+  `next.config.js`. Fixed by actually reading `id` from the request body;
+  removed the ignore flags (along with `eslint.ignoreDuringBuilds`, also
+  masking real signal) now that both are clean.
+- `npm run seed` failed outright when actually run — `ts-node
+  --compiler-options {"module":"CommonJS"}` needs the JSON blob quoted as
+  a single shell argument, but the outer quotes were missing, so the
+  shell split it into `{module:CommonJS}` and `ts-node` rejected it as
+  invalid JSON. Fixed the script's quoting; verified live — the seed now
+  creates a real user and 16 tracking items across all 9 categories.
+- Verified the full CRUD path live against a real (throwaway, local)
+  PostgreSQL instance: `GET /api/tracking` returns real seeded data
+  through the Edge→Node proxy, `POST /api/tracking` creates a real row
+  (verified by a follow-up `GET` showing the count increase), and the
+  `_internal` route's removal doesn't break anything since it was never
+  live to begin with.
+- The same dead `categories` object in `more-projects/page.tsx` found in
+  several sibling repos this pass — defined, never referenced.
+- `next` was already floating on `^14.2.0`; `npm audit fix` pulled the
+  latest compatible patch (`14.2.35`), clearing 9 of 14 `npm audit`
+  findings. The remaining 5 all require Next 16, not attempted here.
+- **Note on `tools/call` in the MCP server**: it's currently a stub —
+  every tool call returns `"Implement your tracking logic here"` rather
+  than hitting the real tracking API. Worth being upfront about this if
+  it comes up: `tools/list` correctly advertises 4 real tool schemas, but
+  none of them are wired to `/api/tracking` yet.
 
 ## Related
 

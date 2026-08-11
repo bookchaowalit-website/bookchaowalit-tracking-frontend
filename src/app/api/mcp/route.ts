@@ -66,9 +66,12 @@ export async function GET() {
 }
 
 async function handleMCPRequest(request: NextRequest) {
+  let requestId: number | string = 0;
+
   try {
     const body = await request.json();
-    const { method, params } = body;
+    const { method, params, id } = body;
+    requestId = id ?? 0;
 
     switch (method) {
       case 'initialize':
@@ -111,9 +114,10 @@ async function handleMCPRequest(request: NextRequest) {
           error: { code: -32601, message: 'Method not found' }
         });
     }
-  } catch (error) {
+  } catch {
     return NextResponse.json({
       jsonrpc: '2.0',
+      id: null,
       error: { code: -32700, message: 'Parse error' }
     }, { status: 400 });
   }

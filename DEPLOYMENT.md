@@ -46,7 +46,7 @@ Your DigitalOcean PostgreSQL database is already configured with:
 
 Your connection string should look like this:
 ```
-postgresql://doadmin:AVNS_fSdVchp9k4CbGWGAVRP@db-postgresql-sgp1-04384-do-user-16924107-0.f.db.ondigitalocean.com:25060/defaultdb?sslmode=require&pgbouncer=true
+postgresql://doadmin:REDACTED_ROTATE_THIS_PASSWORD@db-postgresql-sgp1-04384-do-user-16924107-0.f.db.ondigitalocean.com:25060/defaultdb?sslmode=require&pgbouncer=true
 ```
 
 **Important Notes:**
@@ -116,7 +116,7 @@ Set these in Vercel Dashboard: **Settings** → **Environment Variables**
 
 #### 1. Database URL
 ```
-DATABASE_URL=postgresql://doadmin:AVNS_fSdVchp9k4CbGWGAVRP@db-postgresql-sgp1-04384-do-user-16924107-0.f.db.ondigitalocean.com:25060/defaultdb?sslmode=require&pgbouncer=true
+DATABASE_URL=postgresql://doadmin:REDACTED_ROTATE_THIS_PASSWORD@db-postgresql-sgp1-04384-do-user-16924107-0.f.db.ondigitalocean.com:25060/defaultdb?sslmode=require&pgbouncer=true
 ```
 
 #### 2. NextAuth URL
@@ -156,7 +156,7 @@ NODE_ENV=production
 
 Create a `.env.local` file locally with the same variables:
 ```env
-DATABASE_URL=postgresql://doadmin:AVNS_fSdVchp9k4CbGWGAVRP@db-postgresql-sgp1-04384-do-user-16924107-0.f.db.ondigitalocean.com:25060/defaultdb?sslmode=require&pgbouncer=true
+DATABASE_URL=postgresql://doadmin:REDACTED_ROTATE_THIS_PASSWORD@db-postgresql-sgp1-04384-do-user-16924107-0.f.db.ondigitalocean.com:25060/defaultdb?sslmode=require&pgbouncer=true
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=your-local-secret-for-development
 NODE_ENV=development

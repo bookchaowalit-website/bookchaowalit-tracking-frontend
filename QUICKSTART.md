@@ -20,7 +20,7 @@ npm install
 Create `.env.local` file with your database credentials:
 
 ```env
-DATABASE_URL="postgresql://doadmin:AVNS_fSdVchp9k4CbGWGAVRP@db-postgresql-sgp1-04384-do-user-16924107-0.f.db.ondigitalocean.com:25060/defaultdb?sslmode=require&pgbouncer=true"
+DATABASE_URL="postgresql://doadmin:REDACTED_ROTATE_THIS_PASSWORD@db-postgresql-sgp1-04384-do-user-16924107-0.f.db.ondigitalocean.com:25060/defaultdb?sslmode=require&pgbouncer=true"
 NEXTAUTH_URL="http://localhost:3000"
 NEXTAUTH_SECRET="your-secret-here"
 NODE_ENV="development"
