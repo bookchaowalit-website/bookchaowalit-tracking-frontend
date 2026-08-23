@@ -26,6 +26,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
+        {/* THESIS: TrackIt is a private memory room for unfinished media, not a generic admin grid. OWN-WORLD: a deep blue-black constellation with warm amber selection makes each item feel like a signal in depth. STORY: search the room, tune a status, return to the next thing. FIRST VIEWPORT: show the collection controls and live counts without exposing private content claims. FORM: seed ac6091c1 / assigned sparse console dashboard atmosphere, used as depth, particles, and selected warm signal. FINISH: thin telemetry rules, calm cards, keyboard-like labels, and no decorative metrics beyond the actual collection. */}
   {/* Structured Data for SEO */}
   <script
     type="application/ld+json"

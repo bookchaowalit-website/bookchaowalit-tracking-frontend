@@ -257,9 +257,9 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="tracking-console min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b border-primary mx-auto"></div>
           <p className="mt-4 text-muted-foreground">Loading your tracking list...</p>
         </div>
       </div>
@@ -267,23 +267,23 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
+    <div className="tracking-console min-h-screen bg-gradient-to-b from-background to-secondary/20">
       {/* Header */}
-      <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
+      <header className="tracking-console-header border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="bg-primary text-primary-foreground p-2 rounded-lg">
+              <div className="tracking-console-logo bg-primary text-primary-foreground p-2 rounded-lg">
                 <BookOpen className="w-6 h-6" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold">TrackIt</h1>
-                <p className="text-xs text-muted-foreground">Your Personal Content Tracker</p>
+                <h1 className="text-2xl font-bold">TRACKIT</h1>
+                <p className="text-xs text-muted-foreground">personal media constellation</p>
               </div>
             </div>
             <Button onClick={() => setShowAddModal(true)} size="lg">
               <Plus className="w-5 h-5 mr-2" />
-              Add New Item
+              Add signal
             </Button>
           </div>
         </div>
@@ -292,12 +292,12 @@ export default function DashboardPage() {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         {/* Search and Filters */}
-        <div className="mb-8 space-y-4">
+        <div className="tracking-console-controls mb-8 space-y-4">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
               <Input
-                placeholder="Search by title, author, or description..."
+                placeholder="Search the constellation..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -308,7 +308,7 @@ export default function DashboardPage() {
               onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
             >
               <Heart className={`w-5 h-5 mr-2 ${showFavoritesOnly ? 'fill-current' : ''}`} />
-              Favorites Only
+              Favorites only
             </Button>
           </div>
         </div>
@@ -381,14 +381,14 @@ export default function DashboardPage() {
         </Tabs>
 
         {/* Stats Overview */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <Card>
+        <div className="tracking-console-stats grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <Card className="tracking-stat">
             <CardHeader className="pb-2">
               <CardDescription>Total Items</CardDescription>
               <CardTitle className="text-3xl">{trackingItems.length}</CardTitle>
             </CardHeader>
           </Card>
-          <Card>
+          <Card className="tracking-stat">
             <CardHeader className="pb-2">
               <CardDescription>Watching/Reading</CardDescription>
               <CardTitle className="text-3xl">
@@ -396,7 +396,7 @@ export default function DashboardPage() {
               </CardTitle>
             </CardHeader>
           </Card>
-          <Card>
+          <Card className="tracking-stat">
             <CardHeader className="pb-2">
               <CardDescription>Completed</CardDescription>
               <CardTitle className="text-3xl">
@@ -404,7 +404,7 @@ export default function DashboardPage() {
               </CardTitle>
             </CardHeader>
           </Card>
-          <Card>
+          <Card className="tracking-stat">
             <CardHeader className="pb-2">
               <CardDescription>Favorites</CardDescription>
               <CardTitle className="text-3xl">
@@ -438,7 +438,7 @@ export default function DashboardPage() {
               const status = tracking?.status
 
               return (
-                <Card key={item.id} className="flex flex-col hover:shadow-lg transition-shadow">
+                <Card key={item.id} className="tracking-card flex flex-col hover:shadow-lg transition-shadow">
                   <CardHeader>
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-2">
@@ -562,7 +562,7 @@ export default function DashboardPage() {
       {/* Add Item Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <Card className="tracking-modal w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <CardHeader>
               <CardTitle>Add New Tracking Item</CardTitle>
               <CardDescription>Add a new anime, manga, movie, book, or any content you want to track</CardDescription>
