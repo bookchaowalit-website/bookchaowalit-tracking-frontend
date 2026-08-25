@@ -12,6 +12,8 @@ async function main() {
     where: { email: 'demo@trackit.com' },
     update: {},
     create: {
+      // Keep the public demo page and the seeded workspace on one stable identity.
+      id: 'mock-user-id',
       email: 'demo@trackit.com',
       name: 'Demo User',
       password: hashedPassword,
