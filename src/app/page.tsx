@@ -67,6 +67,60 @@ interface AddItemForm {
   totalBooks?: number | null
 }
 
+const DEMO_STORAGE_KEY = 'trackit-demo-items-v1'
+const DEMO_NOTICE = 'Demo workspace — the database is unavailable, so changes stay in this browser.'
+
+const DEMO_ITEMS: TrackingItem[] = [
+  {
+    id: 'demo-dune-part-two',
+    title: 'Dune: Part Two',
+    description: 'A quiet example of a film waiting for its next session.',
+    imageUrl: null,
+    externalUrl: null,
+    category: ContentCategory.MOVIE,
+    author: 'Denis Villeneuve',
+    year: 2024,
+    genres: ['Science fiction', 'Drama'],
+    totalEpisodes: null,
+    totalChapters: null,
+    totalBooks: null,
+    userTrackings: [{ status: TrackingStatus.PLAN_TO_WATCH, rating: null, progress: null, startDate: null, finishDate: null, priority: 2, isFavorite: true }],
+    _count: { userTrackings: 1 },
+  },
+  {
+    id: 'demo-designing-data-intensive-applications',
+    title: 'Designing Data-Intensive Applications',
+    description: 'A reference book parked in the reading queue.',
+    imageUrl: null,
+    externalUrl: null,
+    category: ContentCategory.BOOK,
+    author: 'Martin Kleppmann',
+    year: 2017,
+    genres: ['Systems', 'Engineering'],
+    totalEpisodes: null,
+    totalChapters: 12,
+    totalBooks: 1,
+    userTrackings: [{ status: TrackingStatus.WATCHING, rating: null, progress: 4, startDate: null, finishDate: null, priority: 1, isFavorite: false }],
+    _count: { userTrackings: 1 },
+  },
+  {
+    id: 'demo-arcane',
+    title: 'Arcane',
+    description: 'A series example showing progress and a completed state.',
+    imageUrl: null,
+    externalUrl: null,
+    category: ContentCategory.TV_SHOW,
+    author: 'Fortiche',
+    year: 2021,
+    genres: ['Animation', 'Fantasy'],
+    totalEpisodes: 18,
+    totalChapters: null,
+    totalBooks: null,
+    userTrackings: [{ status: TrackingStatus.COMPLETED, rating: RatingScale.NINE, progress: 18, startDate: null, finishDate: null, priority: null, isFavorite: true }],
+    _count: { userTrackings: 1 },
+  },
+]
+
 const categoryIcons: Record<ContentCategory, React.ReactNode> = {
   ANIME: <PlayCircle className="w-4 h-4" />,
   MANGA: <BookOpen className="w-4 h-4" />,
@@ -112,9 +166,46 @@ export default function DashboardPage() {
   const [selectedStatus, setSelectedStatus] = useState<TrackingStatus | 'all'>('all')
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [isDemoMode, setIsDemoMode] = useState(false)
+  const [dataNotice, setDataNotice] = useState<string | null>(null)
 
   // Mock user ID - in production, this would come from authentication
   const userId = 'mock-user-id'
+
+  const readDemoItems = () => {
+    try {
+      const stored = window.localStorage.getItem(DEMO_STORAGE_KEY)
+      if (stored) return JSON.parse(stored) as TrackingItem[]
+    } catch (error) {
+      console.warn('Unable to read local demo data:', error)
+    }
+    return DEMO_ITEMS
+  }
+
+  const saveDemoItems = (items: TrackingItem[]) => {
+    try {
+      window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(items))
+    } catch (error) {
+      console.warn('Unable to save local demo data:', error)
+    }
+  }
+
+  const activateDemoMode = () => {
+    const items = readDemoItems()
+    setIsDemoMode(true)
+    setDataNotice(DEMO_NOTICE)
+    setTrackingItems(items)
+    saveDemoItems(items)
+  }
+
+  const updateDemoItems = (update: (_items: TrackingItem[]) => TrackingItem[]) => {
+    const currentItems = trackingItems.length > 0 ? trackingItems : readDemoItems()
+    const nextItems = update(currentItems)
+    setIsDemoMode(true)
+    setDataNotice(DEMO_NOTICE)
+    setTrackingItems(nextItems)
+    saveDemoItems(nextItems)
+  }
 
   useEffect(() => {
     fetchTrackingItems()
@@ -128,12 +219,15 @@ export default function DashboardPage() {
     try {
       const params = new URLSearchParams({ userId })
       const response = await fetch(`/api/tracking?${params}`)
-      if (response.ok) {
-        const data = await response.json()
-        setTrackingItems(data)
-      }
+      if (!response.ok) throw new Error(`Tracking API returned ${response.status}`)
+      const data = await response.json()
+      if (!Array.isArray(data)) throw new Error('Tracking API returned an invalid payload')
+      setTrackingItems(data)
+      setIsDemoMode(false)
+      setDataNotice(null)
     } catch (error) {
       console.error('Error fetching tracking items:', error)
+      activateDemoMode()
     } finally {
       setLoading(false)
     }
@@ -170,6 +264,32 @@ export default function DashboardPage() {
   }
 
   const handleAddItem = async (itemData: AddItemForm) => {
+    const addLocalItem = () => {
+      const item: TrackingItem = {
+        id: `demo-${Date.now()}`,
+        title: itemData.title,
+        description: itemData.description || null,
+        imageUrl: itemData.imageUrl || null,
+        externalUrl: itemData.externalUrl || null,
+        category: itemData.category,
+        author: itemData.author || null,
+        year: itemData.year || null,
+        genres: itemData.genres || [],
+        totalEpisodes: itemData.totalEpisodes || null,
+        totalChapters: itemData.totalChapters || null,
+        totalBooks: itemData.totalBooks || null,
+        userTrackings: [{ status: TrackingStatus.PLAN_TO_WATCH, rating: null, progress: null, startDate: null, finishDate: null, priority: null, isFavorite: false }],
+        _count: { userTrackings: 1 },
+      }
+      updateDemoItems((items) => [item, ...items])
+      setShowAddModal(false)
+    }
+
+    if (isDemoMode) {
+      addLocalItem()
+      return
+    }
+
     try {
       const response = await fetch('/api/tracking', {
         method: 'POST',
@@ -177,51 +297,88 @@ export default function DashboardPage() {
         body: JSON.stringify({ ...itemData, userId })
       })
 
-      if (response.ok) {
-        fetchTrackingItems()
-        setShowAddModal(false)
-      }
+      if (!response.ok) throw new Error(`Tracking API returned ${response.status}`)
+      await fetchTrackingItems()
+      setShowAddModal(false)
     } catch (error) {
       console.error('Error adding item:', error)
+      activateDemoMode()
+      addLocalItem()
     }
   }
 
   const handleUpdateStatus = async (itemId: string, status: TrackingStatus) => {
+    const updateLocalStatus = () => updateDemoItems((items) => items.map((item) => item.id === itemId
+      ? { ...item, userTrackings: item.userTrackings.map((tracking, index) => index === 0 ? { ...tracking, status } : tracking) }
+      : item))
+
+    if (isDemoMode) {
+      updateLocalStatus()
+      return
+    }
+
     try {
-      await fetch('/api/tracking', {
+      const response = await fetch('/api/tracking', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, itemId, status })
       })
-      fetchTrackingItems()
+      if (!response.ok) throw new Error(`Tracking API returned ${response.status}`)
+      await fetchTrackingItems()
     } catch (error) {
       console.error('Error updating status:', error)
+      activateDemoMode()
+      updateLocalStatus()
     }
   }
 
   const handleToggleFavorite = async (itemId: string, isFavorite: boolean) => {
+    const updateLocalFavorite = () => updateDemoItems((items) => items.map((item) => item.id === itemId
+      ? { ...item, userTrackings: item.userTrackings.map((tracking, index) => index === 0 ? { ...tracking, isFavorite: !isFavorite } : tracking) }
+      : item))
+
+    if (isDemoMode) {
+      updateLocalFavorite()
+      return
+    }
+
     try {
-      await fetch('/api/tracking', {
+      const response = await fetch('/api/tracking', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, itemId, isFavorite: !isFavorite })
       })
-      fetchTrackingItems()
+      if (!response.ok) throw new Error(`Tracking API returned ${response.status}`)
+      await fetchTrackingItems()
     } catch (error) {
       console.error('Error toggling favorite:', error)
+      activateDemoMode()
+      updateLocalFavorite()
     }
   }
 
   const handleRateItem = async (itemId: string, rating: RatingScale) => {
+    const updateLocalRating = () => updateDemoItems((items) => items.map((item) => item.id === itemId
+      ? { ...item, userTrackings: item.userTrackings.map((tracking, index) => index === 0 ? { ...tracking, rating } : tracking) }
+      : item))
+
+    if (isDemoMode) {
+      updateLocalRating()
+      return
+    }
+
     try {
-      await fetch('/api/tracking', {
+      const response = await fetch('/api/tracking', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, itemId, rating })
       })
-      fetchTrackingItems()
+      if (!response.ok) throw new Error(`Tracking API returned ${response.status}`)
+      await fetchTrackingItems()
     } catch (error) {
       console.error('Error rating item:', error)
+      activateDemoMode()
+      updateLocalRating()
     }
   }
 
@@ -291,6 +448,16 @@ export default function DashboardPage() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
+        {dataNotice && (
+          <div className="tracking-console-notice mb-6 flex items-start gap-3 px-4 py-3" role="status">
+            <span className="mt-1 size-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Local demo mode</p>
+              <p className="mt-1 text-sm text-muted-foreground">{dataNotice}</p>
+            </div>
+          </div>
+        )}
+
         {/* Search and Filters */}
         <div className="tracking-console-controls mb-8 space-y-4">
           <div className="flex flex-col sm:flex-row gap-4">
