@@ -318,13 +318,20 @@ For support, email support@yourdomain.com or open an issue in the repository.
 ## Architecture note: the Edge/Node split
 
 `/api/tracking` runs on the Edge runtime and is the only public-facing
-tracking endpoint; it forwards every request to `/api/internal/tracking`
+tracking endpoint; it forwards only `GET` requests to `/api/internal/tracking`
 (Node.js runtime) via a same-origin `fetch`, attaching a shared secret
 (`x-internal-secret`, checked against `INTERNAL_API_SECRET`). This exists
 because Prisma Client doesn't run on the Edge runtime, so the actual
 database logic has to live in a Node.js route while the public one can stay
 Edge. Direct requests to `/api/internal/tracking` without the secret
 correctly 401.
+
+The public proxy refuses other methods with JSON `405` and `Allow: GET`
+before reading a body or attaching the internal secret. Cookies, a supplied
+`x-internal-secret`, and method-override headers do not authorize writes.
+Remote writes need a separately designed authenticated boundary; the existing
+local demo fallback can still edit browser-local records. `npm test` exercises
+the actual proxy with a mocked upstream and never connects to a database.
 
 ## Notes from a recent audit pass
 
@@ -350,7 +357,8 @@ correctly 401.
   shell split it into `{module:CommonJS}` and `ts-node` rejected it as
   invalid JSON. Fixed the script's quoting; verified live — the seed now
   creates a real user and 16 tracking items across all 9 categories.
-- Verified the full CRUD path live against a real (throwaway, local)
+- Historical verification before the public proxy became read-only: the full
+  CRUD path was exercised against a real (throwaway, local)
   PostgreSQL instance: `GET /api/tracking` returns real seeded data
   through the Edge→Node proxy, `POST /api/tracking` creates a real row
   (verified by a follow-up `GET` showing the count increase), and the

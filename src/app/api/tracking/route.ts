@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Public Edge proxy — forwards requests to internal Node handler
+// Public read-only Edge proxy to the internal Node handler.
 export const runtime = 'edge';
 
 const INTERNAL_SECRET_HEADER = 'x-internal-secret';
 const INTERNAL_PATH = '/api/internal/tracking';
 
 async function forward(request: NextRequest) {
+  if (request.method !== 'GET') {
+    return NextResponse.json(
+      { error: 'Method not allowed' },
+      { status: 405, headers: { Allow: 'GET' } },
+    );
+  }
+
   const url = new URL(request.url);
   const origin = url.origin;
   const target = new URL(INTERNAL_PATH, origin);
@@ -16,20 +23,9 @@ async function forward(request: NextRequest) {
   const headers = new Headers(request.headers);
   headers.set(INTERNAL_SECRET_HEADER, process.env.INTERNAL_API_SECRET ?? '');
 
-  // Read body if present
-  let body: BodyInit | null = null;
-  if (request.method !== 'GET' && request.method !== 'HEAD') {
-    try {
-      body = await request.text();
-    } catch {
-      body = null;
-    }
-  }
-
   const res = await fetch(target.toString(), {
     method: request.method,
     headers,
-    body: body || undefined,
     redirect: 'manual',
   });
 
