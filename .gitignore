@@ -49,9 +49,6 @@ logs
 .parcel-cache
 .eslintcache
 
-# Prisma
-prisma/migrations/
-
 # Temporary files
 tmp/
 temp/
