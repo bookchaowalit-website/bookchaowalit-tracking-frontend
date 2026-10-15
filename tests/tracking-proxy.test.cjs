@@ -1,90 +1,164 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const Module = require('node:module');
-const path = require('node:path');
-const { afterEach, test } = require('node:test');
-const ts = require('typescript');
+const { afterEach, beforeEach, test } = require('node:test');
 const { NextRequest } = require('next/server');
+const { loadRoute } = require('./helpers/load-route.cjs');
 
-// Exercise the actual Edge route without a database or a second test compiler.
-const routePath = path.resolve(__dirname, '../src/app/api/tracking/route.ts');
-const compiled = ts.transpileModule(fs.readFileSync(routePath, 'utf8'), {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-}).outputText;
-const routeModule = new Module(routePath, module);
-routeModule.filename = routePath;
-routeModule.paths = Module._nodeModulePaths(path.dirname(routePath));
-routeModule._compile(compiled, routePath);
-const route = routeModule.exports;
+// The session is whatever the test sets; nothing from the request can change it.
+let session = null;
+const { routePath, route } = loadRoute('src/app/api/tracking/route.ts', {
+  'next-auth': { getServerSession: async () => session },
+  '@/lib/auth': { authOptions: {} },
+});
+
+const ENV_KEYS = ['INTERNAL_API_SECRET', 'INTERNAL_API_ORIGIN', 'NEXTAUTH_URL', 'VERCEL_URL'];
+const originalEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 const originalFetch = global.fetch;
-const originalSecret = process.env.INTERNAL_API_SECRET;
+let fetchCalls = [];
+
+beforeEach(() => {
+  session = null;
+  fetchCalls = [];
+  for (const key of ENV_KEYS) delete process.env[key];
+  process.env.INTERNAL_API_SECRET = 'test-only-internal-secret';
+  process.env.NEXTAUTH_URL = 'https://tracking.example.test';
+  global.fetch = async (url, init) => {
+    fetchCalls.push({ url: new URL(url), init });
+    return new Response('[{"id":"own"}]', { status: 200 });
+  };
+});
 
 afterEach(() => {
   global.fetch = originalFetch;
-  if (originalSecret === undefined) delete process.env.INTERNAL_API_SECRET;
-  else process.env.INTERNAL_API_SECRET = originalSecret;
+  for (const key of ENV_KEYS) {
+    if (originalEnv[key] === undefined) delete process.env[key];
+    else process.env[key] = originalEnv[key];
+  }
 });
 
+const signInAs = (id) => { session = { user: { id }, expires: '2999-01-01T00:00:00.000Z' }; };
+
 for (const method of ['POST', 'PUT', 'DELETE', 'OPTIONS']) {
-  test(`${method} refuses anonymous forwarding before body or upstream access`, async () => {
-    process.env.INTERNAL_API_SECRET = 'test-only-internal-secret';
-    let calls = 0;
-    global.fetch = async () => { calls += 1; return new Response('{}'); };
-    const request = new NextRequest('http://localhost/api/tracking?userId=other-user', {
+  test(`${method} is refused with 405 before session, body or upstream access`, async () => {
+    signInAs('user-a');
+    const request = new NextRequest('http://localhost/api/tracking?userId=user-a', {
       method,
-      headers: {
-        'x-internal-secret': 'test-only-internal-secret',
-        'x-http-method-override': 'GET',
-        cookie: 'session=untrusted',
-      },
+      headers: { 'x-internal-secret': 'test-only-internal-secret', 'x-http-method-override': 'GET' },
     });
-    let bodyReads = 0;
-    request.text = async () => {
-      bodyReads += 1;
-      throw new Error('A refused request must not read its body');
-    };
+    request.text = async () => { throw new Error('A refused request must not read its body'); };
     const response = await route[method](request);
     assert.equal(response.status, 405);
     assert.equal(response.headers.get('allow'), 'GET');
-    assert.deepEqual(await response.json(), { error: 'Method not allowed' });
-    assert.equal(bodyReads, 0);
-    assert.equal(calls, 0);
+    assert.equal(fetchCalls.length, 0);
   });
 }
 
-test('shared forwarding guard refuses a non-GET request through the GET export too', async () => {
-  global.fetch = async () => { throw new Error('No non-GET request may reach upstream'); };
+test('the GET export also refuses a non-GET request', async () => {
+  signInAs('user-a');
   for (const method of ['POST', 'HEAD']) {
     const response = await route.GET(new NextRequest('http://localhost/api/tracking', { method }));
     assert.equal(response.status, 405);
   }
+  assert.equal(fetchCalls.length, 0);
 });
 
 for (const [name, url, headers] of [
   ['anonymous GET', 'http://localhost/api/tracking', {}],
   ['anonymous GET naming another user', 'http://localhost/api/tracking?userId=user-b', {}],
-  ['GET with a forged internal secret, cookie and userId', 'http://localhost/api/tracking?userId=user-b', {
+  ['anonymous GET with a forged internal secret, cookie and userId', 'http://localhost/api/tracking?userId=user-b', {
     'x-internal-secret': 'test-only-internal-secret',
-    cookie: 'next-auth.session-token=untrusted; session=untrusted',
+    cookie: 'next-auth.session-token=untrusted',
     authorization: 'Bearer untrusted',
   }],
-  ['GET naming the UI demo user', 'http://localhost/api/tracking?userId=mock-user-id', {}],
+  ['anonymous GET naming the old UI demo user', 'http://localhost/api/tracking?userId=mock-user-id', {}],
 ]) {
   test(`${name} is refused with 401 and never reaches the internal route`, async () => {
-    process.env.INTERNAL_API_SECRET = 'test-only-internal-secret';
-    let calls = 0;
-    global.fetch = async () => { calls += 1; return new Response('[{"id":"leak"}]'); };
     const response = await route.GET(new NextRequest(url, { headers }));
     assert.equal(response.status, 401);
-    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.match(response.headers.get('cache-control'), /no-store/);
     assert.deepEqual(await response.json(), { error: 'Unauthorized' });
-    assert.equal(calls, 0);
+    assert.equal(fetchCalls.length, 0);
   });
 }
 
-test('public route source no longer reads or forwards the internal secret', () => {
+test('a session without a user id is treated as anonymous', async () => {
+  session = { user: { email: 'a@example.test' } };
+  const response = await route.GET(new NextRequest('http://localhost/api/tracking'));
+  assert.equal(response.status, 401);
+  assert.equal(fetchCalls.length, 0);
+});
+
+for (const query of ['userId=user-b', 'userId=user-a&userId=user-b', 'userId=']) {
+  test(`user A requesting ${query} is refused with 403 and never forwarded`, async () => {
+    signInAs('user-a');
+    const response = await route.GET(new NextRequest(`http://localhost/api/tracking?${query}`));
+    assert.equal(response.status, 403);
+    assert.equal(fetchCalls.length, 0);
+  });
+}
+
+test('own read forwards only the session user id, filters and the secret', async () => {
+  signInAs('user-a');
+  const response = await route.GET(new NextRequest(
+    'http://localhost/api/tracking?userId=user-a&category=ANIME&search=x&evil=1',
+    { headers: { cookie: 'next-auth.session-token=abc', authorization: 'Bearer t' } },
+  ));
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('cache-control'), /private, no-store/);
+  assert.deepEqual(await response.json(), [{ id: 'own' }]);
+  assert.equal(fetchCalls.length, 1);
+  const { url, init } = fetchCalls[0];
+  assert.equal(url.origin, 'https://tracking.example.test');
+  assert.equal(url.pathname, '/api/internal/tracking');
+  assert.deepEqual(url.searchParams.getAll('userId'), ['user-a']);
+  assert.equal(url.searchParams.get('category'), 'ANIME');
+  assert.equal(url.searchParams.get('search'), 'x');
+  assert.equal(url.searchParams.has('evil'), false);
+  assert.deepEqual(Object.keys(init.headers).sort(), ['accept', 'x-internal-secret']);
+  assert.equal(init.headers['x-internal-secret'], 'test-only-internal-secret');
+  assert.equal(init.redirect, 'manual');
+});
+
+test('a forged Host header cannot redirect the internal secret', async () => {
+  signInAs('user-a');
+  await route.GET(new NextRequest('https://attacker.example/api/tracking', { headers: { host: 'attacker.example' } }));
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(fetchCalls[0].url.origin, 'https://tracking.example.test');
+});
+
+test('INTERNAL_API_ORIGIN takes precedence, then VERCEL_URL is the fallback', async () => {
+  signInAs('user-a');
+  process.env.INTERNAL_API_ORIGIN = 'http://127.0.0.1:3000';
+  await route.GET(new NextRequest('http://localhost/api/tracking'));
+  delete process.env.INTERNAL_API_ORIGIN;
+  delete process.env.NEXTAUTH_URL;
+  process.env.VERCEL_URL = 'tracking-preview.vercel.app';
+  await route.GET(new NextRequest('http://localhost/api/tracking'));
+  assert.deepEqual(fetchCalls.map(({ url }) => url.origin), ['http://127.0.0.1:3000', 'https://tracking-preview.vercel.app']);
+});
+
+for (const missing of ['INTERNAL_API_SECRET', 'origin']) {
+  test(`a missing ${missing} fails closed with 503 and never forwards`, async () => {
+    signInAs('user-a');
+    if (missing === 'origin') delete process.env.NEXTAUTH_URL;
+    else delete process.env[missing];
+    const response = await route.GET(new NextRequest('http://localhost/api/tracking'));
+    assert.equal(response.status, 503);
+    assert.equal(fetchCalls.length, 0);
+  });
+}
+
+test('an upstream redirect or network failure becomes 502', async () => {
+  signInAs('user-a');
+  global.fetch = async () => new Response(null, { status: 307, headers: { location: 'https://elsewhere.test' } });
+  assert.equal((await route.GET(new NextRequest('http://localhost/api/tracking'))).status, 502);
+  global.fetch = async () => { throw new TypeError('fetch failed'); };
+  assert.equal((await route.GET(new NextRequest('http://localhost/api/tracking'))).status, 502);
+});
+
+test('public route never trusts the request origin for forwarding', () => {
   const source = fs.readFileSync(routePath, 'utf8');
-  assert.doesNotMatch(source, /INTERNAL_API_SECRET/);
-  assert.doesNotMatch(source, /x-internal-secret/);
-  assert.doesNotMatch(source, /fetch\(/);
+  assert.doesNotMatch(source, /request\.url/);
+  assert.doesNotMatch(source, /nextUrl\.origin/);
+  assert.doesNotMatch(source, /headers\.get\(['"]host/i);
 });

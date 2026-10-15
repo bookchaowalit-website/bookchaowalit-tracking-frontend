@@ -127,9 +127,16 @@ DATABASE_URL="postgresql://doadmin:REDACTED_ROTATE_THIS_PASSWORD@db-postgresql-s
 NEXTAUTH_URL="http://localhost:3000"
 NEXTAUTH_SECRET="CHANGE_ME_GENERATE_WITH_OPENSSL_RAND_BASE64_32"
 
+# Internal tracking API secret (reads return 503 while unset)
+INTERNAL_API_SECRET="CHANGE_ME_GENERATE_WITH_OPENSSL_RAND_BASE64_32"
+
 # App Environment
 NODE_ENV="development"
 ```
+
+Sign-in providers (Google, GitHub, Discord, email magic link) are enabled by
+their own variables. See [AUTH.md](AUTH.md) for those variables and for the
+one-time migration baseline.
 
 ### 3. Generate NextAuth Secret
 
