@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Public read-only Edge proxy to the internal Node handler.
+// Public read-only Edge endpoint.
 export const runtime = 'edge';
 
-const INTERNAL_SECRET_HEADER = 'x-internal-secret';
-const INTERNAL_PATH = '/api/internal/tracking';
-
-async function forward(request: NextRequest) {
+// Reads must be authorised by the caller's authenticated identity, but no
+// session system exists yet. Until one does, the public endpoint fails closed:
+// it never forwards to /api/internal/tracking and never attaches the internal
+// secret, so a client-supplied `userId` can no longer select whose data is read.
+// The UI falls back to its browser-local demo mode on a non-OK response.
+async function respond(request: NextRequest) {
   if (request.method !== 'GET') {
     return NextResponse.json(
       { error: 'Method not allowed' },
@@ -14,39 +16,24 @@ async function forward(request: NextRequest) {
     );
   }
 
-  const url = new URL(request.url);
-  const origin = url.origin;
-  const target = new URL(INTERNAL_PATH, origin);
-  target.search = url.search; // preserve query
-
-  // Build headers and attach secret
-  const headers = new Headers(request.headers);
-  headers.set(INTERNAL_SECRET_HEADER, process.env.INTERNAL_API_SECRET ?? '');
-
-  const res = await fetch(target.toString(), {
-    method: request.method,
-    headers,
-    redirect: 'manual',
-  });
-
-  const text = await res.text();
-  const responseHeaders = new Headers(res.headers);
-
-  return new NextResponse(text, { status: res.status, headers: responseHeaders });
+  return NextResponse.json(
+    { error: 'Unauthorized' },
+    { status: 401, headers: { 'Cache-Control': 'no-store' } },
+  );
 }
 
 export async function GET(request: NextRequest) {
-  return forward(request);
+  return respond(request);
 }
 export async function POST(request: NextRequest) {
-  return forward(request);
+  return respond(request);
 }
 export async function PUT(request: NextRequest) {
-  return forward(request);
+  return respond(request);
 }
 export async function DELETE(request: NextRequest) {
-  return forward(request);
+  return respond(request);
 }
 export async function OPTIONS(request: NextRequest) {
-  return forward(request);
+  return respond(request);
 }

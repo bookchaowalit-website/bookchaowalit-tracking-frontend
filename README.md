@@ -318,20 +318,24 @@ For support, email support@yourdomain.com or open an issue in the repository.
 ## Architecture note: the Edge/Node split
 
 `/api/tracking` runs on the Edge runtime and is the only public-facing
-tracking endpoint; it forwards only `GET` requests to `/api/internal/tracking`
-(Node.js runtime) via a same-origin `fetch`, attaching a shared secret
-(`x-internal-secret`, checked against `INTERNAL_API_SECRET`). This exists
-because Prisma Client doesn't run on the Edge runtime, so the actual
-database logic has to live in a Node.js route while the public one can stay
-Edge. Direct requests to `/api/internal/tracking` without the secret
-correctly 401.
+tracking endpoint. It used to forward `GET` requests to
+`/api/internal/tracking` with the shared `x-internal-secret` attached, and the
+internal route filtered only by the client-supplied `userId` query parameter,
+so anyone who knew a `userId` could read that user's list (IDOR, threat model
+TM-07). No session system exists yet (NextAuth is a dependency but is not
+configured), so there is no authenticated identity to authorise a read.
+Until one exists the public endpoint **fails closed**: every `GET` returns
+JSON `401` with `Cache-Control: no-store`, nothing is forwarded, and the
+internal secret is never read or attached. Other methods still return JSON
+`405` with `Allow: GET` before reading a body. The UI falls back to its
+browser-local demo mode on the `401`.
 
-The public proxy refuses other methods with JSON `405` and `Allow: GET`
-before reading a body or attaching the internal secret. Cookies, a supplied
-`x-internal-secret`, and method-override headers do not authorize writes.
-Remote writes need a separately designed authenticated boundary; the existing
-local demo fallback can still edit browser-local records. `npm test` exercises
-the actual proxy with a mocked upstream and never connects to a database.
+`/api/internal/tracking` (Node.js runtime, where Prisma runs) still requires
+`x-internal-secret` to match `INTERNAL_API_SECRET`; direct requests without it
+return `401`. Re-enabling remote reads needs real authentication that derives
+`userId` server-side from the session and rejects a client-supplied `userId`
+that differs. `npm test` exercises both routes with stubbed upstream/database
+and never connects to a database.
 
 ## Notes from a recent audit pass
 

@@ -60,27 +60,31 @@ test('shared forwarding guard refuses a non-GET request through the GET export t
   }
 });
 
-test('GET retains query, trusted header and upstream response behavior', async () => {
-  process.env.INTERNAL_API_SECRET = 'test-only-internal-secret';
-  let calls = 0;
-  global.fetch = async (url, options) => {
-    calls += 1;
-    assert.equal(url, 'http://localhost/api/internal/tracking?userId=demo&search=A%26B');
-    assert.equal(options.method, 'GET');
-    assert.equal(options.headers.get('x-internal-secret'), 'test-only-internal-secret');
-    assert.equal(options.body, undefined);
-    assert.equal(options.redirect, 'manual');
-    return new Response('[{"id":"sample"}]', {
-      status: 200,
-      headers: { 'content-type': 'application/json', 'x-result': 'preserved' },
-    });
-  };
-  const response = await route.GET(new NextRequest(
-    'http://localhost/api/tracking?userId=demo&search=A%26B',
-    { headers: { 'x-internal-secret': 'untrusted-value' } },
-  ));
-  assert.equal(calls, 1);
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get('x-result'), 'preserved');
-  assert.deepEqual(await response.json(), [{ id: 'sample' }]);
+for (const [name, url, headers] of [
+  ['anonymous GET', 'http://localhost/api/tracking', {}],
+  ['anonymous GET naming another user', 'http://localhost/api/tracking?userId=user-b', {}],
+  ['GET with a forged internal secret, cookie and userId', 'http://localhost/api/tracking?userId=user-b', {
+    'x-internal-secret': 'test-only-internal-secret',
+    cookie: 'next-auth.session-token=untrusted; session=untrusted',
+    authorization: 'Bearer untrusted',
+  }],
+  ['GET naming the UI demo user', 'http://localhost/api/tracking?userId=mock-user-id', {}],
+]) {
+  test(`${name} is refused with 401 and never reaches the internal route`, async () => {
+    process.env.INTERNAL_API_SECRET = 'test-only-internal-secret';
+    let calls = 0;
+    global.fetch = async () => { calls += 1; return new Response('[{"id":"leak"}]'); };
+    const response = await route.GET(new NextRequest(url, { headers }));
+    assert.equal(response.status, 401);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(await response.json(), { error: 'Unauthorized' });
+    assert.equal(calls, 0);
+  });
+}
+
+test('public route source no longer reads or forwards the internal secret', () => {
+  const source = fs.readFileSync(routePath, 'utf8');
+  assert.doesNotMatch(source, /INTERNAL_API_SECRET/);
+  assert.doesNotMatch(source, /x-internal-secret/);
+  assert.doesNotMatch(source, /fetch\(/);
 });
