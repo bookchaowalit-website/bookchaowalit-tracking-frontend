@@ -70,6 +70,7 @@ interface AddItemForm {
 
 const DEMO_STORAGE_KEY = 'trackit-demo-items-v1'
 const DEMO_NOTICE = 'Demo workspace — the database is unavailable, so changes stay in this browser.'
+const READ_ONLY_NOTICE = 'Your saved list is read-only for now — changes could not be saved.'
 const SIGNED_OUT_NOTICE = 'Demo workspace — sign in to load your saved list. Until then, changes stay in this browser.'
 
 const DEMO_ITEMS: TrackingItem[] = [
@@ -309,8 +310,7 @@ export default function DashboardPage() {
       setShowAddModal(false)
     } catch (error) {
       console.error('Error adding item:', error)
-      activateDemoMode()
-      addLocalItem()
+      setDataNotice(READ_ONLY_NOTICE)
     }
   }
 
@@ -334,8 +334,7 @@ export default function DashboardPage() {
       await fetchTrackingItems()
     } catch (error) {
       console.error('Error updating status:', error)
-      activateDemoMode()
-      updateLocalStatus()
+      setDataNotice(READ_ONLY_NOTICE)
     }
   }
 
@@ -359,8 +358,7 @@ export default function DashboardPage() {
       await fetchTrackingItems()
     } catch (error) {
       console.error('Error toggling favorite:', error)
-      activateDemoMode()
-      updateLocalFavorite()
+      setDataNotice(READ_ONLY_NOTICE)
     }
   }
 
@@ -384,8 +382,7 @@ export default function DashboardPage() {
       await fetchTrackingItems()
     } catch (error) {
       console.error('Error rating item:', error)
-      activateDemoMode()
-      updateLocalRating()
+      setDataNotice(READ_ONLY_NOTICE)
     }
   }
 
@@ -466,7 +463,7 @@ export default function DashboardPage() {
           <div className="tracking-console-notice mb-6 flex items-start gap-3 px-4 py-3" role="status">
             <span className="mt-1 size-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Local demo mode</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">{isDemoMode ? 'Local demo mode' : 'Read-only'}</p>
               <p className="mt-1 text-sm text-muted-foreground">{dataNotice}</p>
             </div>
           </div>

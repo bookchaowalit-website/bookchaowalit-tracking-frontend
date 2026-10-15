@@ -41,7 +41,7 @@ beforeEach(() => {
   findManyArgs = [];
   for (const key of ENV_KEYS) delete process.env[key];
   process.env.INTERNAL_API_SECRET = 'test-only-internal-secret';
-  process.env.INTERNAL_API_ORIGIN = 'http://internal.test';
+  process.env.INTERNAL_API_ORIGIN = 'https://internal.test';
   global.fetch = async (url, init) => internalRoute.GET(new NextRequest(url, init));
 });
 

@@ -19,10 +19,21 @@ function json(body: unknown, status: number, headers: Record<string, string> = {
 
 // The internal route is reached through a configured origin, never the
 // request's Host header, so a forged Host cannot redirect the internal secret.
+// The secret is only ever sent over HTTPS, or plain HTTP to a loopback host.
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
 function internalOrigin(): string | null {
-  const configured = process.env.INTERNAL_API_ORIGIN || process.env.NEXTAUTH_URL;
-  if (configured) return new URL(configured).origin;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  const configured = process.env.INTERNAL_API_ORIGIN || process.env.NEXTAUTH_URL
+    || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
+  if (!configured) return null;
+  let url: URL;
+  try {
+    url = new URL(configured);
+  } catch {
+    return null;
+  }
+  if (url.protocol === 'https:') return url.origin;
+  if (url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname)) return url.origin;
   return null;
 }
 
@@ -44,7 +55,7 @@ async function respond(request: NextRequest) {
   const secret = process.env.INTERNAL_API_SECRET;
   const origin = internalOrigin();
   if (!secret || !origin) {
-    console.error('Tracking reads are not configured: INTERNAL_API_SECRET or internal origin missing');
+    console.error('Tracking reads are not configured: INTERNAL_API_SECRET missing or internal origin missing/not HTTPS');
     return json({ error: 'Service unavailable' }, 503);
   }
 

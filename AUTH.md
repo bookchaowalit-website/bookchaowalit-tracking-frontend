@@ -17,10 +17,12 @@ revokes that sign-in immediately.
    not forwarded.
 5. The internal origin comes from `INTERNAL_API_ORIGIN`, then `NEXTAUTH_URL`,
    then `https://$VERCEL_URL`. It is never taken from the request's Host header.
-   If the secret or the origin is missing, the route returns `503`.
+   The origin must be HTTPS (plain HTTP only for `localhost`, `127.0.0.1`, `[::1]`).
+   If the secret is missing or the origin is missing or not HTTPS, the route returns `503`.
 
-Writes through the public route stay disabled (`405`). The UI keeps changes in
-browser-local demo mode until a session-scoped write path exists.
+Writes through the public route stay disabled (`405`). A signed-in user sees a
+read-only notice when a write fails. Their list is never copied into the
+browser-local demo storage that signed-out visitors use.
 
 ## Providers
 

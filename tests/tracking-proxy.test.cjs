@@ -137,6 +137,25 @@ test('INTERNAL_API_ORIGIN takes precedence, then VERCEL_URL is the fallback', as
   assert.deepEqual(fetchCalls.map(({ url }) => url.origin), ['http://127.0.0.1:3000', 'https://tracking-preview.vercel.app']);
 });
 
+for (const origin of ['http://tracking.example.test', 'http://10.0.0.5:3000', 'ftp://tracking.example.test', 'not a url']) {
+  test(`origin ${origin} is refused with 503 so the secret never travels in clear`, async () => {
+    signInAs('user-a');
+    process.env.INTERNAL_API_ORIGIN = origin;
+    const response = await route.GET(new NextRequest('http://localhost/api/tracking'));
+    assert.equal(response.status, 503);
+    assert.equal(fetchCalls.length, 0);
+  });
+}
+
+test('plain HTTP is allowed only for a loopback origin', async () => {
+  signInAs('user-a');
+  for (const origin of ['http://localhost:3000', 'http://[::1]:3000']) {
+    process.env.INTERNAL_API_ORIGIN = origin;
+    assert.equal((await route.GET(new NextRequest('http://localhost/api/tracking'))).status, 200);
+  }
+  assert.deepEqual(fetchCalls.map(({ url }) => url.origin), ['http://localhost:3000', 'http://[::1]:3000']);
+});
+
 for (const missing of ['INTERNAL_API_SECRET', 'origin']) {
   test(`a missing ${missing} fails closed with 503 and never forwards`, async () => {
     signInAs('user-a');
