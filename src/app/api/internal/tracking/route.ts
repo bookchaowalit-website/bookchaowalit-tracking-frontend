@@ -224,11 +224,12 @@ export async function PUT(request: NextRequest) {
         const updatedTracking = await prisma.userTracking.update({
             where: { userId_itemId: { userId, itemId } },
             data: {
+                // Omitted fields stay as they are; an explicit null clears them.
                 status: status || undefined,
-                rating: rating ? RatingScale[rating as keyof typeof RatingScale] : undefined,
+                rating: rating === null ? null : rating ? RatingScale[rating as keyof typeof RatingScale] : undefined,
                 progress,
-                startDate: startDate ? new Date(startDate) : undefined,
-                finishDate: finishDate ? new Date(finishDate) : undefined,
+                startDate: startDate === null ? null : startDate ? new Date(startDate) : undefined,
+                finishDate: finishDate === null ? null : finishDate ? new Date(finishDate) : undefined,
                 priority,
                 isFavorite
             },

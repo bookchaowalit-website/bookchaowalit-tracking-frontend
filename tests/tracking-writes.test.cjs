@@ -337,3 +337,16 @@ test('the UI sends the user id its view shows on every write', () => {
   assert.match(source, /JSON\.stringify\(\{ \.\.\.body, userId: viewUserId \}\)/);
   assert.doesNotMatch(source, /READ_ONLY_NOTICE/);
 });
+
+test('an explicit null clears a field and an omitted field is kept', async () => {
+  signInAs('user-b');
+  Object.assign(trackingOf('user-b', 'item-b'), { startDate: new Date('2026-01-01'), progress: 4 });
+  const response = await write('PUT', { itemId: 'item-b', rating: null, startDate: null, finishDate: null });
+  assert.equal(response.status, 200);
+  const tracking = trackingOf('user-b', 'item-b');
+  assert.equal(tracking.rating, null);
+  assert.equal(tracking.startDate, null);
+  assert.equal(tracking.finishDate, null);
+  assert.equal(tracking.progress, 4);
+  assert.equal(tracking.status, 'COMPLETED');
+});
