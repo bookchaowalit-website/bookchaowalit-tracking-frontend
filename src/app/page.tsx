@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { signIn, signOut, useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -174,6 +174,10 @@ export default function DashboardPage() {
 
   // The server derives the user from the session; the client never names one.
   const { status: authStatus } = useSession()
+  // Bumped on every auth change so a read started under an earlier session
+  // can never write its (possibly another user's) result into state.
+  const readGeneration = useRef(0)
+  const pendingRead = useRef<AbortController | null>(null)
 
   const readDemoItems = () => {
     try {
@@ -211,6 +215,9 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
+    readGeneration.current += 1
+    pendingRead.current?.abort()
+    pendingRead.current = null
     if (authStatus === 'loading') return
     if (authStatus === 'authenticated') {
       fetchTrackingItems()
@@ -225,19 +232,27 @@ export default function DashboardPage() {
   }, [trackingItems, searchQuery, selectedCategory, selectedStatus, showFavoritesOnly])
 
   const fetchTrackingItems = async () => {
+    const generation = readGeneration.current
+    const controller = new AbortController()
+    pendingRead.current?.abort()
+    pendingRead.current = controller
+    const isStale = () => generation !== readGeneration.current
     try {
-      const response = await fetch('/api/tracking')
+      const response = await fetch('/api/tracking', { signal: controller.signal, cache: 'no-store' })
       if (!response.ok) throw new Error(`Tracking API returned ${response.status}`)
       const data = await response.json()
+      if (isStale()) return
       if (!Array.isArray(data)) throw new Error('Tracking API returned an invalid payload')
       setTrackingItems(data)
       setIsDemoMode(false)
       setDataNotice(null)
     } catch (error) {
+      if (isStale()) return
       console.error('Error fetching tracking items:', error)
       activateDemoMode()
     } finally {
-      setLoading(false)
+      if (pendingRead.current === controller) pendingRead.current = null
+      if (!isStale()) setLoading(false)
     }
   }
 
