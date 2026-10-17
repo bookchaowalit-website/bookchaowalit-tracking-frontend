@@ -38,26 +38,24 @@ afterEach(() => {
 
 const signInAs = (id) => { session = { user: { id }, expires: '2999-01-01T00:00:00.000Z' }; };
 
-for (const method of ['POST', 'PUT', 'DELETE', 'OPTIONS']) {
-  test(`${method} is refused with 405 before session, body or upstream access`, async () => {
-    signInAs('user-a');
-    const request = new NextRequest('http://localhost/api/tracking?userId=user-a', {
-      method,
-      headers: { 'x-internal-secret': 'test-only-internal-secret', 'x-http-method-override': 'GET' },
-    });
-    request.text = async () => { throw new Error('A refused request must not read its body'); };
-    const response = await route[method](request);
-    assert.equal(response.status, 405);
-    assert.equal(response.headers.get('allow'), 'GET');
-    assert.equal(fetchCalls.length, 0);
-  });
-}
-
-test('the GET export also refuses a non-GET request', async () => {
+test('OPTIONS is refused with 405 before session, body or upstream access', async () => {
   signInAs('user-a');
-  for (const method of ['POST', 'HEAD']) {
-    const response = await route.GET(new NextRequest('http://localhost/api/tracking', { method }));
-    assert.equal(response.status, 405);
+  const request = new NextRequest('http://localhost/api/tracking?userId=user-a', {
+    method: 'OPTIONS',
+    headers: { 'x-internal-secret': 'test-only-internal-secret', 'x-http-method-override': 'GET' },
+  });
+  request.text = async () => { throw new Error('A refused request must not read its body'); };
+  const response = await route.OPTIONS(request);
+  assert.equal(response.status, 405);
+  assert.equal(response.headers.get('allow'), 'GET, POST, PUT, DELETE');
+  assert.equal(fetchCalls.length, 0);
+});
+
+test('each export refuses a method other than its own', async () => {
+  signInAs('user-a');
+  for (const [exported, method] of [['GET', 'POST'], ['GET', 'HEAD'], ['POST', 'DELETE'], ['PUT', 'GET'], ['DELETE', 'PUT']]) {
+    const response = await route[exported](new NextRequest('http://localhost/api/tracking', { method }));
+    assert.equal(response.status, 405, `${exported} export with ${method}`);
   }
   assert.equal(fetchCalls.length, 0);
 });
