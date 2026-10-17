@@ -268,16 +268,21 @@ export default function DashboardPage() {
   }
 
   // Signed-in writes go to the API only. The server takes the user from the
-  // session, so the body never names one. A write that finishes after the
-  // session changed is ignored rather than refreshing another identity's view.
+  // session; the body names the user this view shows only as an assertion, so
+  // if another tab switched the cookie to a different account the server
+  // refuses the write with 403 instead of applying it to that account. A write
+  // that finishes after the session changed is ignored rather than refreshing
+  // another identity's view.
   const saveTracking = async (method: 'POST' | 'PUT' | 'DELETE', body: Record<string, unknown>) => {
+    const viewUserId = session?.user?.id
+    if (!viewUserId) return false
     const generation = readGeneration.current
     const isStale = () => generation !== readGeneration.current
     try {
       const response = await fetch('/api/tracking', {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, userId: viewUserId }),
         cache: 'no-store',
       })
       if (isStale()) return false

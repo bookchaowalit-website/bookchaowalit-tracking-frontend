@@ -37,7 +37,7 @@ revokes that sign-in immediately.
    `Sec-Fetch-Site` other than `same-origin`, and must be
    `Content-Type: application/json`. Failing the origin checks → `403`; a
    non-JSON content type → `415`.
-4. **Allow-listed body** (zod, strict; unknown keys → `400`, bodies over 16 KB → `413`):
+4. **Allow-listed body** (zod, strict; unknown keys → `400`, bodies over 16 KB → `413`, enforced while reading the stream):
    - `POST`: `title`, `category`, `description`, `imageUrl`, `externalUrl`,
      `author`, `year`, `genres`, `totalEpisodes`, `totalChapters`,
      `totalBooks`, `status`, `rating`, `progress`, `priority`, `isFavorite`.
@@ -50,7 +50,10 @@ revokes that sign-in immediately.
    delete and writes with the same key. Another user's item, or a missing
    one, is `404` and nothing changes. Adding an item already on the list is `409`.
 
-In the UI, signed-in changes go only to the API. A failed load or save shows
+In the UI, signed-in changes go only to the API. Each write carries the user
+id the page is showing, as an assertion only, so a stale tab whose cookie was
+switched to another account in a different tab gets `403` instead of writing
+to that account. A failed load or save shows
 a notice; the signed-in list is never read from or written to the
 browser-local demo storage that signed-out visitors use.
 

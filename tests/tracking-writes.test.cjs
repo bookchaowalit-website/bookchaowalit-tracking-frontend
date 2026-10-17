@@ -304,3 +304,36 @@ test('a JSON content type with a charset and no Fetch Metadata is accepted', asy
   assert.equal(response.status, 200);
   assert.equal(trackingOf('user-a', 'item-a').isFavorite, true);
 });
+
+test('a stale tab showing A, whose cookie now belongs to B, cannot write to B', async () => {
+  // page.tsx sends the user id its view shows; the server session is now B.
+  signInAs('user-b');
+  const response = await write('PUT', { itemId: 'item-b', rating: 'ONE', userId: 'user-a' });
+  assert.equal(response.status, 403);
+  assert.equal(forwarded.length, 0);
+  assert.equal(trackingOf('user-b', 'item-b').rating, 'NINE');
+});
+
+test('a chunked body over the limit is cut off without buffering it all', async () => {
+  signInAs('user-a');
+  let pulled = 0;
+  const body = new ReadableStream({
+    pull(controller) {
+      if (pulled === 64) return controller.close();
+      pulled += 1;
+      controller.enqueue(new Uint8Array(16 * 1024).fill(120));
+    },
+  });
+  const response = await publicRoute.POST(new NextRequest(`${APP_ORIGIN}/api/tracking`, {
+    method: 'POST', headers: SAME_ORIGIN, body, duplex: 'half',
+  }));
+  assert.equal(response.status, 413);
+  assert.ok(pulled < 64, `read ${pulled} of 64 chunks`);
+  assert.equal(forwarded.length, 0);
+});
+
+test('the UI sends the user id its view shows on every write', () => {
+  const source = require('node:fs').readFileSync(require('node:path').resolve(__dirname, '../src/app/page.tsx'), 'utf8');
+  assert.match(source, /JSON\.stringify\(\{ \.\.\.body, userId: viewUserId \}\)/);
+  assert.doesNotMatch(source, /READ_ONLY_NOTICE/);
+});
