@@ -70,7 +70,8 @@ interface AddItemForm {
 
 const DEMO_STORAGE_KEY = 'trackit-demo-items-v1'
 const DEMO_NOTICE = 'Demo workspace — the database is unavailable, so changes stay in this browser.'
-const READ_ONLY_NOTICE = 'Your saved list is read-only for now — changes could not be saved.'
+const LOAD_ERROR_NOTICE = 'Your saved list could not be loaded. Try again in a moment.'
+const SAVE_ERROR_NOTICE = 'That change could not be saved. Your saved list was not changed.'
 const SIGNED_OUT_NOTICE = 'Demo workspace — sign in to load your saved list. Until then, changes stay in this browser.'
 
 const DEMO_ITEMS: TrackingItem[] = [
@@ -175,7 +176,8 @@ export default function DashboardPage() {
   // The server derives the user from the session; the client never names one.
   const { data: session, status: authStatus } = useSession()
   // Changes on sign-in, sign-out and a direct switch from one user to another.
-  const sessionKey = authStatus === 'authenticated' ? `user:${session?.user?.id ?? ''}` : authStatus
+  const isSignedIn = authStatus === 'authenticated'
+  const sessionKey = isSignedIn ? `user:${session?.user?.id ?? ''}` : authStatus
   // Bumped on every auth change so a read started under an earlier session
   // can never write its (possibly another user's) result into state.
   const readGeneration = useRef(0)
@@ -256,10 +258,42 @@ export default function DashboardPage() {
     } catch (error) {
       if (isStale()) return
       console.error('Error fetching tracking items:', error)
-      activateDemoMode()
+      // Signed-in users never fall back to the browser-local demo list, so
+      // nothing they do afterwards can land in demo storage.
+      setDataNotice(LOAD_ERROR_NOTICE)
     } finally {
       if (pendingRead.current === controller) pendingRead.current = null
       if (!isStale()) setLoading(false)
+    }
+  }
+
+  // Signed-in writes go to the API only. The server takes the user from the
+  // session; the body names the user this view shows only as an assertion, so
+  // if another tab switched the cookie to a different account the server
+  // refuses the write with 403 instead of applying it to that account. A write
+  // that finishes after the session changed is ignored rather than refreshing
+  // another identity's view.
+  const saveTracking = async (method: 'POST' | 'PUT' | 'DELETE', body: Record<string, unknown>) => {
+    const viewUserId = session?.user?.id
+    if (!viewUserId) return false
+    const generation = readGeneration.current
+    const isStale = () => generation !== readGeneration.current
+    try {
+      const response = await fetch('/api/tracking', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...body, userId: viewUserId }),
+        cache: 'no-store',
+      })
+      if (isStale()) return false
+      if (!response.ok) throw new Error(`Tracking API returned ${response.status}`)
+      await fetchTrackingItems()
+      return true
+    } catch (error) {
+      if (isStale()) return false
+      console.error(`Error saving tracking change (${method}):`, error)
+      setDataNotice(SAVE_ERROR_NOTICE)
+      return false
     }
   }
 
@@ -315,25 +349,14 @@ export default function DashboardPage() {
       setShowAddModal(false)
     }
 
-    if (isDemoMode) {
-      addLocalItem()
+    if (!isSignedIn) {
+      // Demo mode is only ever entered while signed out; during the session
+      // check neither the API nor demo storage is written.
+      if (isDemoMode) addLocalItem()
       return
     }
 
-    try {
-      const response = await fetch('/api/tracking', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(itemData)
-      })
-
-      if (!response.ok) throw new Error(`Tracking API returned ${response.status}`)
-      await fetchTrackingItems()
-      setShowAddModal(false)
-    } catch (error) {
-      console.error('Error adding item:', error)
-      setDataNotice(READ_ONLY_NOTICE)
-    }
+    if (await saveTracking('POST', { ...itemData })) setShowAddModal(false)
   }
 
   const handleUpdateStatus = async (itemId: string, status: TrackingStatus) => {
@@ -341,23 +364,12 @@ export default function DashboardPage() {
       ? { ...item, userTrackings: item.userTrackings.map((tracking, index) => index === 0 ? { ...tracking, status } : tracking) }
       : item))
 
-    if (isDemoMode) {
-      updateLocalStatus()
+    if (!isSignedIn) {
+      if (isDemoMode) updateLocalStatus()
       return
     }
 
-    try {
-      const response = await fetch('/api/tracking', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemId, status })
-      })
-      if (!response.ok) throw new Error(`Tracking API returned ${response.status}`)
-      await fetchTrackingItems()
-    } catch (error) {
-      console.error('Error updating status:', error)
-      setDataNotice(READ_ONLY_NOTICE)
-    }
+    await saveTracking('PUT', { itemId, status })
   }
 
   const handleToggleFavorite = async (itemId: string, isFavorite: boolean) => {
@@ -365,23 +377,12 @@ export default function DashboardPage() {
       ? { ...item, userTrackings: item.userTrackings.map((tracking, index) => index === 0 ? { ...tracking, isFavorite: !isFavorite } : tracking) }
       : item))
 
-    if (isDemoMode) {
-      updateLocalFavorite()
+    if (!isSignedIn) {
+      if (isDemoMode) updateLocalFavorite()
       return
     }
 
-    try {
-      const response = await fetch('/api/tracking', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemId, isFavorite: !isFavorite })
-      })
-      if (!response.ok) throw new Error(`Tracking API returned ${response.status}`)
-      await fetchTrackingItems()
-    } catch (error) {
-      console.error('Error toggling favorite:', error)
-      setDataNotice(READ_ONLY_NOTICE)
-    }
+    await saveTracking('PUT', { itemId, isFavorite: !isFavorite })
   }
 
   const handleRateItem = async (itemId: string, rating: RatingScale) => {
@@ -389,23 +390,12 @@ export default function DashboardPage() {
       ? { ...item, userTrackings: item.userTrackings.map((tracking, index) => index === 0 ? { ...tracking, rating } : tracking) }
       : item))
 
-    if (isDemoMode) {
-      updateLocalRating()
+    if (!isSignedIn) {
+      if (isDemoMode) updateLocalRating()
       return
     }
 
-    try {
-      const response = await fetch('/api/tracking', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemId, rating })
-      })
-      if (!response.ok) throw new Error(`Tracking API returned ${response.status}`)
-      await fetchTrackingItems()
-    } catch (error) {
-      console.error('Error rating item:', error)
-      setDataNotice(READ_ONLY_NOTICE)
-    }
+    await saveTracking('PUT', { itemId, rating })
   }
 
   const getProgressText = (item: TrackingItem) => {
@@ -485,7 +475,7 @@ export default function DashboardPage() {
           <div className="tracking-console-notice mb-6 flex items-start gap-3 px-4 py-3" role="status">
             <span className="mt-1 size-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">{isDemoMode ? 'Local demo mode' : 'Read-only'}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">{isDemoMode ? 'Local demo mode' : 'Sync problem'}</p>
               <p className="mt-1 text-sm text-muted-foreground">{dataNotice}</p>
             </div>
           </div>
@@ -777,7 +767,7 @@ export default function DashboardPage() {
                   category: formData.get('category') as ContentCategory,
                   author: (formData.get('author') as string) || null,
                   year: formData.get('year') ? parseInt(formData.get('year') as string) : null,
-                  genres: formData.get('genres') ? (formData.get('genres') as string).split(',').map(g => g.trim()) : [],
+                  genres: formData.get('genres') ? (formData.get('genres') as string).split(',').map(g => g.trim()).filter(Boolean) : [],
                   imageUrl: (formData.get('imageUrl') as string) || null,
                   externalUrl: (formData.get('externalUrl') as string) || null,
                   totalEpisodes: formData.get('totalEpisodes') ? parseInt(formData.get('totalEpisodes') as string) : null,

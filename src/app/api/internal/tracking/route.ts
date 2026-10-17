@@ -17,6 +17,24 @@ function checkSecret(request: NextRequest) {
     return secret && secret === process.env.INTERNAL_API_SECRET;
 }
 
+// Items are shared between users; what a user owns is their UserTracking row.
+// Update and delete first load that row by (userId, itemId), so an item that
+// is someone else's (or does not exist) gives the same 404 and nothing changes.
+function findOwnedTracking(userId: string, itemId: string) {
+    return prisma.userTracking.findUnique({
+        where: { userId_itemId: { userId, itemId } },
+        include: { item: true }
+    });
+}
+
+function notOwned() {
+    return NextResponse.json({ error: 'Tracking item not found' }, { status: 404 });
+}
+
+function isUniqueViolation(error: unknown) {
+    return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'P2002';
+}
+
 export async function GET(request: NextRequest) {
     if (!checkSecret(request)) return unauthorized();
 
@@ -179,6 +197,9 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json(trackingItem, { status: 201 });
     } catch (error) {
+        if (isUniqueViolation(error)) {
+            return NextResponse.json({ error: 'This item is already on your list' }, { status: 409 });
+        }
         console.error('Error creating tracking item:', error);
         return NextResponse.json({ error: 'Failed to create tracking item' }, { status: 500 });
     }
@@ -195,23 +216,20 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'User ID and item ID are required' }, { status: 400 });
         }
 
-        const currentTracking = await prisma.userTracking.findUnique({
-            where: { userId_itemId: { userId, itemId } },
-            include: { item: true }
-        });
+        const currentTracking = await findOwnedTracking(userId, itemId);
+        if (!currentTracking) return notOwned();
 
-        if (!currentTracking) {
-            return NextResponse.json({ error: 'Tracking item not found' }, { status: 404 });
-        }
-
+        // Keyed by (userId, itemId) again, so the write itself can only ever
+        // touch the caller's own row.
         const updatedTracking = await prisma.userTracking.update({
             where: { userId_itemId: { userId, itemId } },
             data: {
+                // Omitted fields stay as they are; an explicit null clears them.
                 status: status || undefined,
-                rating: rating ? RatingScale[rating as keyof typeof RatingScale] : undefined,
+                rating: rating === null ? null : rating ? RatingScale[rating as keyof typeof RatingScale] : undefined,
                 progress,
-                startDate: startDate ? new Date(startDate) : undefined,
-                finishDate: finishDate ? new Date(finishDate) : undefined,
+                startDate: startDate === null ? null : startDate ? new Date(startDate) : undefined,
+                finishDate: finishDate === null ? null : finishDate ? new Date(finishDate) : undefined,
                 priority,
                 isFavorite
             },
@@ -259,14 +277,8 @@ export async function DELETE(request: NextRequest) {
             return NextResponse.json({ error: 'User ID and item ID are required' }, { status: 400 });
         }
 
-        const tracking = await prisma.userTracking.findUnique({
-            where: { userId_itemId: { userId, itemId } },
-            include: { item: true }
-        });
-
-        if (!tracking) {
-            return NextResponse.json({ error: 'Tracking item not found' }, { status: 404 });
-        }
+        const tracking = await findOwnedTracking(userId, itemId);
+        if (!tracking) return notOwned();
 
         await prisma.userTracking.delete({ where: { userId_itemId: { userId, itemId } } });
 
