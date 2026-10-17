@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { signIn, signOut, useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -69,6 +70,8 @@ interface AddItemForm {
 
 const DEMO_STORAGE_KEY = 'trackit-demo-items-v1'
 const DEMO_NOTICE = 'Demo workspace — the database is unavailable, so changes stay in this browser.'
+const READ_ONLY_NOTICE = 'Your saved list is read-only for now — changes could not be saved.'
+const SIGNED_OUT_NOTICE = 'Demo workspace — sign in to load your saved list. Until then, changes stay in this browser.'
 
 const DEMO_ITEMS: TrackingItem[] = [
   {
@@ -169,8 +172,14 @@ export default function DashboardPage() {
   const [isDemoMode, setIsDemoMode] = useState(false)
   const [dataNotice, setDataNotice] = useState<string | null>(null)
 
-  // Mock user ID - in production, this would come from authentication
-  const userId = 'mock-user-id'
+  // The server derives the user from the session; the client never names one.
+  const { data: session, status: authStatus } = useSession()
+  // Changes on sign-in, sign-out and a direct switch from one user to another.
+  const sessionKey = authStatus === 'authenticated' ? `user:${session?.user?.id ?? ''}` : authStatus
+  // Bumped on every auth change so a read started under an earlier session
+  // can never write its (possibly another user's) result into state.
+  const readGeneration = useRef(0)
+  const pendingRead = useRef<AbortController | null>(null)
 
   const readDemoItems = () => {
     try {
@@ -190,10 +199,10 @@ export default function DashboardPage() {
     }
   }
 
-  const activateDemoMode = () => {
+  const activateDemoMode = (notice = DEMO_NOTICE) => {
     const items = readDemoItems()
     setIsDemoMode(true)
-    setDataNotice(DEMO_NOTICE)
+    setDataNotice(notice)
     setTrackingItems(items)
     saveDemoItems(items)
   }
@@ -208,28 +217,49 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    fetchTrackingItems()
-  }, [])
+    readGeneration.current += 1
+    pendingRead.current?.abort()
+    pendingRead.current = null
+    // Never keep the previous identity's list while the next one loads.
+    setTrackingItems([])
+    setIsDemoMode(false)
+    setDataNotice(null)
+    if (authStatus === 'loading') return
+    if (authStatus === 'authenticated') {
+      setLoading(true)
+      fetchTrackingItems()
+    } else {
+      activateDemoMode(SIGNED_OUT_NOTICE)
+      setLoading(false)
+    }
+  }, [sessionKey])
 
   useEffect(() => {
     filterItems()
   }, [trackingItems, searchQuery, selectedCategory, selectedStatus, showFavoritesOnly])
 
   const fetchTrackingItems = async () => {
+    const generation = readGeneration.current
+    const controller = new AbortController()
+    pendingRead.current?.abort()
+    pendingRead.current = controller
+    const isStale = () => generation !== readGeneration.current
     try {
-      const params = new URLSearchParams({ userId })
-      const response = await fetch(`/api/tracking?${params}`)
+      const response = await fetch('/api/tracking', { signal: controller.signal, cache: 'no-store' })
       if (!response.ok) throw new Error(`Tracking API returned ${response.status}`)
       const data = await response.json()
+      if (isStale()) return
       if (!Array.isArray(data)) throw new Error('Tracking API returned an invalid payload')
       setTrackingItems(data)
       setIsDemoMode(false)
       setDataNotice(null)
     } catch (error) {
+      if (isStale()) return
       console.error('Error fetching tracking items:', error)
       activateDemoMode()
     } finally {
-      setLoading(false)
+      if (pendingRead.current === controller) pendingRead.current = null
+      if (!isStale()) setLoading(false)
     }
   }
 
@@ -294,7 +324,7 @@ export default function DashboardPage() {
       const response = await fetch('/api/tracking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...itemData, userId })
+        body: JSON.stringify(itemData)
       })
 
       if (!response.ok) throw new Error(`Tracking API returned ${response.status}`)
@@ -302,8 +332,7 @@ export default function DashboardPage() {
       setShowAddModal(false)
     } catch (error) {
       console.error('Error adding item:', error)
-      activateDemoMode()
-      addLocalItem()
+      setDataNotice(READ_ONLY_NOTICE)
     }
   }
 
@@ -321,14 +350,13 @@ export default function DashboardPage() {
       const response = await fetch('/api/tracking', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, itemId, status })
+        body: JSON.stringify({ itemId, status })
       })
       if (!response.ok) throw new Error(`Tracking API returned ${response.status}`)
       await fetchTrackingItems()
     } catch (error) {
       console.error('Error updating status:', error)
-      activateDemoMode()
-      updateLocalStatus()
+      setDataNotice(READ_ONLY_NOTICE)
     }
   }
 
@@ -346,14 +374,13 @@ export default function DashboardPage() {
       const response = await fetch('/api/tracking', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, itemId, isFavorite: !isFavorite })
+        body: JSON.stringify({ itemId, isFavorite: !isFavorite })
       })
       if (!response.ok) throw new Error(`Tracking API returned ${response.status}`)
       await fetchTrackingItems()
     } catch (error) {
       console.error('Error toggling favorite:', error)
-      activateDemoMode()
-      updateLocalFavorite()
+      setDataNotice(READ_ONLY_NOTICE)
     }
   }
 
@@ -371,14 +398,13 @@ export default function DashboardPage() {
       const response = await fetch('/api/tracking', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, itemId, rating })
+        body: JSON.stringify({ itemId, rating })
       })
       if (!response.ok) throw new Error(`Tracking API returned ${response.status}`)
       await fetchTrackingItems()
     } catch (error) {
       console.error('Error rating item:', error)
-      activateDemoMode()
-      updateLocalRating()
+      setDataNotice(READ_ONLY_NOTICE)
     }
   }
 
@@ -438,10 +464,17 @@ export default function DashboardPage() {
                 <p className="text-xs text-muted-foreground">personal media constellation</p>
               </div>
             </div>
-            <Button onClick={() => setShowAddModal(true)} size="lg">
-              <Plus className="w-5 h-5 mr-2" />
-              Add signal
-            </Button>
+            <div className="flex items-center gap-2">
+              {authStatus === 'authenticated' ? (
+                <Button variant="outline" onClick={() => signOut()}>Sign out</Button>
+              ) : (
+                <Button variant="outline" onClick={() => signIn()} disabled={authStatus === 'loading'}>Sign in</Button>
+              )}
+              <Button onClick={() => setShowAddModal(true)} size="lg">
+                <Plus className="w-5 h-5 mr-2" />
+                Add signal
+              </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -452,7 +485,7 @@ export default function DashboardPage() {
           <div className="tracking-console-notice mb-6 flex items-start gap-3 px-4 py-3" role="status">
             <span className="mt-1 size-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Local demo mode</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">{isDemoMode ? 'Local demo mode' : 'Read-only'}</p>
               <p className="mt-1 text-sm text-muted-foreground">{dataNotice}</p>
             </div>
           </div>
