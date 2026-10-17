@@ -173,7 +173,9 @@ export default function DashboardPage() {
   const [dataNotice, setDataNotice] = useState<string | null>(null)
 
   // The server derives the user from the session; the client never names one.
-  const { status: authStatus } = useSession()
+  const { data: session, status: authStatus } = useSession()
+  // Changes on sign-in, sign-out and a direct switch from one user to another.
+  const sessionKey = authStatus === 'authenticated' ? `user:${session?.user?.id ?? ''}` : authStatus
   // Bumped on every auth change so a read started under an earlier session
   // can never write its (possibly another user's) result into state.
   const readGeneration = useRef(0)
@@ -218,14 +220,19 @@ export default function DashboardPage() {
     readGeneration.current += 1
     pendingRead.current?.abort()
     pendingRead.current = null
+    // Never keep the previous identity's list while the next one loads.
+    setTrackingItems([])
+    setIsDemoMode(false)
+    setDataNotice(null)
     if (authStatus === 'loading') return
     if (authStatus === 'authenticated') {
+      setLoading(true)
       fetchTrackingItems()
     } else {
       activateDemoMode(SIGNED_OUT_NOTICE)
       setLoading(false)
     }
-  }, [authStatus])
+  }, [sessionKey])
 
   useEffect(() => {
     filterItems()
